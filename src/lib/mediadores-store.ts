@@ -1,6 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { validateAndSanitize, validators, logSecurityEvent } from "@/lib/security";
-import { moderateUser } from "@/lib/api-service";
+import { ativarMediadorAPI, suspenderMediadorAPI } from "@/lib/api-service";
 
 export interface Mediador {
   id: string;
@@ -88,13 +88,13 @@ export async function addMediador(m: {
   const nome_completo = sanitizeField(m.nome_completo, "nome_completo");
   const chave_pix = sanitizeField(m.chave_pix, "chave_pix");
 
-  // 1. PRIMEIRO: Chamar API 3 para ativar o cargo no Discord
+  // 1. PRIMEIRO: Chamar API para ativar o cargo no Discord
   try {
-    console.log("Chamando API 3 para ativar mediador no Discord...");
-    const result = await moderateUser(discord_id, "ativar");
-    console.log("✅ API 3 - Ativação bem sucedida:", result);
+    console.log("Chamando API para ativar mediador no Discord...");
+    const result = await ativarMediadorAPI(discord_id, nome_completo);
+    console.log("✅ API - Ativação bem sucedida:", result);
   } catch (apiError) {
-    console.error("❌ Erro ao chamar API 3 para ativar:", apiError);
+    console.error("❌ Erro ao chamar API para ativar:", apiError);
     throw new Error(`Falha ao ativar mediador no Discord: ${apiError instanceof Error ? apiError.message : 'Erro desconhecido'}`);
   }
 
@@ -128,7 +128,6 @@ export async function addMediador(m: {
 export async function ativarMediador(id: string, nome: string, valor_venda: number) {
   if (valor_venda < 0 || valor_venda > 9_999_999) throw new Error("Valor inválido.");
   
-  // Buscar o mediador para obter o discord_id
   const { data: mediador, error: findError } = await (supabase as any)
     .from("mediadores")
     .select("discord_id")
@@ -137,13 +136,13 @@ export async function ativarMediador(id: string, nome: string, valor_venda: numb
   
   if (findError) throw new Error("Mediador não encontrado");
   
-  // 1. PRIMEIRO: Chamar API 3 para ativar o cargo no Discord
+  // 1. PRIMEIRO: Chamar API para ativar o cargo no Discord
   try {
-    console.log("Chamando API 3 para ativar mediador no Discord...");
-    const result = await moderateUser(mediador.discord_id, "ativar");
-    console.log("✅ API 3 - Ativação bem sucedida:", result);
+    console.log("Chamando API para ativar mediador no Discord...");
+    const result = await ativarMediadorAPI(mediador.discord_id, nome);
+    console.log("✅ API - Ativação bem sucedida:", result);
   } catch (apiError) {
-    console.error("❌ Erro ao chamar API 3 para ativar:", apiError);
+    console.error("❌ Erro ao chamar API para ativar:", apiError);
     throw new Error(`Falha ao ativar mediador no Discord: ${apiError instanceof Error ? apiError.message : 'Erro desconhecido'}`);
   }
   
@@ -167,7 +166,6 @@ export async function ativarMediador(id: string, nome: string, valor_venda: numb
 export async function suspenderMediador(id: string) {
   console.log('Suspending mediador - ID:', id);
   
-  // Buscar o mediador para obter o discord_id
   const { data: mediador, error: findError } = await (supabase as any)
     .from("mediadores")
     .select("discord_id")
@@ -176,13 +174,13 @@ export async function suspenderMediador(id: string) {
   
   if (findError) throw new Error("Mediador não encontrado");
   
-  // 1. PRIMEIRO: Chamar API 3 para suspender o cargo no Discord
+  // 1. PRIMEIRO: Chamar API para suspender o cargo no Discord
   try {
-    console.log("Chamando API 3 para suspender mediador no Discord...");
-    const result = await moderateUser(mediador.discord_id, "suspender");
-    console.log("✅ API 3 - Suspensão bem sucedida:", result);
+    console.log("Chamando API para suspender mediador no Discord...");
+    const result = await suspenderMediadorAPI(mediador.discord_id);
+    console.log("✅ API - Suspensão bem sucedida:", result);
   } catch (apiError) {
-    console.error("❌ Erro ao chamar API 3 para suspender:", apiError);
+    console.error("❌ Erro ao chamar API para suspender:", apiError);
     throw new Error(`Falha ao suspender mediador no Discord: ${apiError instanceof Error ? apiError.message : 'Erro desconhecido'}`);
   }
   
@@ -207,7 +205,6 @@ export async function suspenderMediador(id: string) {
 }
 
 export async function excluirMediador(id: string) {
-  // Buscar o mediador para obter o discord_id
   const { data: mediador, error: findError } = await (supabase as any)
     .from("mediadores")
     .select("discord_id")
@@ -219,13 +216,13 @@ export async function excluirMediador(id: string) {
     throw new Error("Mediador não encontrado");
   }
   
-  // 1. PRIMEIRO: Chamar API 3 para remover o cargo no Discord
+  // 1. PRIMEIRO: Chamar API para remover o cargo no Discord
   try {
-    console.log("Chamando API 3 para remover cargo do mediador no Discord...");
-    const result = await moderateUser(mediador.discord_id, "suspender");
-    console.log("✅ API 3 - Remoção de cargo bem sucedida:", result);
+    console.log("Chamando API para remover cargo do mediador no Discord...");
+    const result = await suspenderMediadorAPI(mediador.discord_id);
+    console.log("✅ API - Remoção de cargo bem sucedida:", result);
   } catch (apiError) {
-    console.error("❌ Erro ao chamar API 3 para remover cargo:", apiError);
+    console.error("❌ Erro ao chamar API para remover cargo:", apiError);
     throw new Error(`Falha ao remover cargo do mediador no Discord: ${apiError instanceof Error ? apiError.message : 'Erro desconhecido'}`);
   }
   
@@ -256,26 +253,20 @@ export async function editarMediador(id: string, data: { discord_id?: string; no
     sanitized.chave_pix = sanitizeField(data.chave_pix, "chave_pix");
   }
   
-  // Se o discord_id foi alterado, precisamos atualizar no Discord também
-  if (data.discord_id !== undefined) {
+  if (data.discord_id !== undefined && sanitized.nome_completo) {
     const { data: mediador, error: findError } = await (supabase as any)
       .from("mediadores")
       .select("status")
       .eq("id", id)
       .single();
     
-    if (!findError && mediador) {
-      // Se o mediador está ativo, atualiza o cargo no Discord com o novo ID
-      if (mediador.status === "ativo") {
-        try {
-          // Primeiro remove o cargo do ID antigo (não temos como saber o antigo)
-          // Depois adiciona no novo
-          await moderateUser(sanitized.discord_id, "ativar");
-          console.log("✅ API 3 - Cargo atualizado para novo Discord ID");
-        } catch (apiError) {
-          console.error("❌ Erro ao atualizar cargo no Discord:", apiError);
-          throw new Error(`Falha ao atualizar cargo no Discord: ${apiError instanceof Error ? apiError.message : 'Erro desconhecido'}`);
-        }
+    if (!findError && mediador && mediador.status === "ativo") {
+      try {
+        await ativarMediadorAPI(sanitized.discord_id, sanitized.nome_completo);
+        console.log("✅ API - Cargo atualizado para novo Discord ID");
+      } catch (apiError) {
+        console.error("❌ Erro ao atualizar cargo no Discord:", apiError);
+        throw new Error(`Falha ao atualizar cargo no Discord: ${apiError instanceof Error ? apiError.message : 'Erro desconhecido'}`);
       }
     }
   }

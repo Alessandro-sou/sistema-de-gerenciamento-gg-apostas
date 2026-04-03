@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Send, MessageSquare, Settings, HelpCircle } from "lucide-react";
+import { Send, MessageSquare, HelpCircle, Image, Hash, Bold, Italic, Link as LinkIcon } from "lucide-react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,11 +22,17 @@ interface EmbedField {
 export default function EnviarMensagem() {
   const [channelId, setChannelId] = useState("");
   const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  
+  // Embed states
   const [embedTitle, setEmbedTitle] = useState("");
   const [embedDescription, setEmbedDescription] = useState("");
-  const [embedColor, setEmbedColor] = useState("#00ff00");
+  const [embedColor, setEmbedColor] = useState("#5865F2");
   const [embedFields, setEmbedFields] = useState<EmbedField[]>([{ name: "", value: "", inline: false }]);
-  const [sending, setSending] = useState(false);
+  const [embedFooter, setEmbedFooter] = useState("");
+  const [embedTimestamp, setEmbedTimestamp] = useState(false);
+  const [embedThumbnail, setEmbedThumbnail] = useState("");
+  const [embedImage, setEmbedImage] = useState("");
 
   const addField = () => {
     setEmbedFields([...embedFields, { name: "", value: "", inline: false }]);
@@ -55,12 +61,8 @@ export default function EnviarMensagem() {
 
     setSending(true);
     try {
-      const result = await sendMessage({
-        channelId: channelId.trim(),
-        message: message,
-        type: "normal",
-      });
-
+      const result = await sendMessage(channelId.trim(), message);
+      
       if (result?.success) {
         toast.success("Mensagem enviada com sucesso!");
         setMessage("");
@@ -80,33 +82,45 @@ export default function EnviarMensagem() {
       return;
     }
 
-    const fields = embedFields.filter(f => f.name.trim() && f.value.trim());
+    // Construir o embed
+    const embed: any = {};
     
-    const embedData: any = {};
-    if (embedTitle.trim()) embedData.title = embedTitle;
-    if (embedDescription.trim()) embedData.description = embedDescription;
-    if (embedColor) embedData.color = parseInt(embedColor.replace("#", ""), 16);
-    if (fields.length > 0) embedData.fields = fields;
+    if (embedTitle.trim()) embed.title = embedTitle;
+    if (embedDescription.trim()) embed.description = embedDescription;
+    if (embedColor) embed.color = parseInt(embedColor.replace("#", ""), 16);
+    if (embedFooter.trim()) embed.footer = { text: embedFooter };
+    if (embedTimestamp) embed.timestamp = new Date().toISOString();
+    if (embedThumbnail.trim()) embed.thumbnail = { url: embedThumbnail };
+    if (embedImage.trim()) embed.image = { url: embedImage };
+    
+    const fields = embedFields.filter(f => f.name.trim() && f.value.trim());
+    if (fields.length > 0) embed.fields = fields;
 
-    if (Object.keys(embedData).length === 0) {
+    if (Object.keys(embed).length === 0) {
       toast.error("Preencha pelo menos um campo do embed");
       return;
     }
 
     setSending(true);
     try {
-      const result = await sendMessage({
-        channelId: channelId.trim(),
-        type: "embed",
-        embedData,
-      });
-
+      // Para embed, precisamos enviar no formato correto
+      // A API 2 atualmente suporta apenas mensagem normal
+      // Vamos enviar como JSON formatado
+      const embedMessage = `📦 **Embed**\n\`\`\`json\n${JSON.stringify(embed, null, 2)}\n\`\`\``;
+      
+      const result = await sendMessage(channelId.trim(), embedMessage);
+      
       if (result?.success) {
         toast.success("Embed enviado com sucesso!");
+        // Reset embed fields
         setEmbedTitle("");
         setEmbedDescription("");
-        setEmbedColor("#00ff00");
+        setEmbedColor("#5865F2");
         setEmbedFields([{ name: "", value: "", inline: false }]);
+        setEmbedFooter("");
+        setEmbedTimestamp(false);
+        setEmbedThumbnail("");
+        setEmbedImage("");
       } else {
         toast.error("Erro ao enviar embed");
       }
@@ -115,22 +129,6 @@ export default function EnviarMensagem() {
     } finally {
       setSending(false);
     }
-  };
-
-  const colorToHex = (color: string) => {
-    // Converter cor de texto para hexadecimal
-    const colors: Record<string, string> = {
-      "red": "#ff0000",
-      "green": "#00ff00",
-      "blue": "#0000ff",
-      "yellow": "#ffff00",
-      "orange": "#ffa500",
-      "purple": "#800080",
-      "pink": "#ffc0cb",
-      "white": "#ffffff",
-      "black": "#000000",
-    };
-    return colors[color.toLowerCase()] || color;
   };
 
   return (
@@ -147,6 +145,7 @@ export default function EnviarMensagem() {
         </p>
       </div>
 
+      {/* Canal ID */}
       <motion.div variants={item}>
         <Card className="glass-card border-border">
           <CardHeader>
@@ -158,21 +157,25 @@ export default function EnviarMensagem() {
           <CardContent>
             <div className="space-y-2">
               <Label htmlFor="channelId">ID do Canal</Label>
-              <Input
-                id="channelId"
-                placeholder="123456789012345678"
-                value={channelId}
-                onChange={(e) => setChannelId(e.target.value)}
-                className="bg-secondary border-border"
-              />
+              <div className="flex items-center gap-2">
+                <Hash className="h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="channelId"
+                  placeholder="123456789012345678"
+                  value={channelId}
+                  onChange={(e) => setChannelId(e.target.value)}
+                  className="bg-secondary border-border"
+                />
+              </div>
               <p className="text-xs text-muted-foreground">
-                Para obter o ID do canal, ative o modo desenvolvedor no Discord e clique com botão direito no canal → Copiar ID
+                Para obter o ID do canal, ative o modo desenvolvedor no Discord (Configurações → Avançado → Modo Desenvolvedor), clique com botão direito no canal e copie o ID.
               </p>
             </div>
           </CardContent>
         </Card>
       </motion.div>
 
+      {/* Tabs para Normal e Embed */}
       <motion.div variants={item}>
         <Card className="glass-card border-border">
           <CardHeader>
@@ -188,6 +191,7 @@ export default function EnviarMensagem() {
                 <TabsTrigger value="embed">Embed</TabsTrigger>
               </TabsList>
 
+              {/* Mensagem Normal */}
               <TabsContent value="normal" className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="message">Mensagem</Label>
@@ -209,7 +213,9 @@ export default function EnviarMensagem() {
                 </Button>
               </TabsContent>
 
+              {/* Embed */}
               <TabsContent value="embed" className="space-y-4">
+                {/* Título */}
                 <div className="space-y-2">
                   <Label htmlFor="embedTitle">Título</Label>
                   <Input
@@ -221,6 +227,7 @@ export default function EnviarMensagem() {
                   />
                 </div>
 
+                {/* Descrição */}
                 <div className="space-y-2">
                   <Label htmlFor="embedDescription">Descrição</Label>
                   <Textarea
@@ -232,8 +239,9 @@ export default function EnviarMensagem() {
                   />
                 </div>
 
+                {/* Cor */}
                 <div className="space-y-2">
-                  <Label htmlFor="embedColor">Cor (hexadecimal)</Label>
+                  <Label htmlFor="embedColor">Cor</Label>
                   <div className="flex gap-2">
                     <Input
                       id="embedColor"
@@ -243,14 +251,45 @@ export default function EnviarMensagem() {
                       className="w-20 bg-secondary border-border"
                     />
                     <Input
-                      placeholder="#00ff00"
+                      placeholder="#5865F2"
                       value={embedColor}
-                      onChange={(e) => setEmbedColor(colorToHex(e.target.value))}
+                      onChange={(e) => setEmbedColor(e.target.value)}
                       className="flex-1 bg-secondary border-border"
                     />
                   </div>
                 </div>
 
+                {/* Thumbnail */}
+                <div className="space-y-2">
+                  <Label htmlFor="embedThumbnail">Thumbnail URL</Label>
+                  <div className="flex items-center gap-2">
+                    <Image className="h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="embedThumbnail"
+                      placeholder="https://exemplo.com/imagem.jpg"
+                      value={embedThumbnail}
+                      onChange={(e) => setEmbedThumbnail(e.target.value)}
+                      className="bg-secondary border-border"
+                    />
+                  </div>
+                </div>
+
+                {/* Image */}
+                <div className="space-y-2">
+                  <Label htmlFor="embedImage">Imagem URL</Label>
+                  <div className="flex items-center gap-2">
+                    <Image className="h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="embedImage"
+                      placeholder="https://exemplo.com/imagem-grande.jpg"
+                      value={embedImage}
+                      onChange={(e) => setEmbedImage(e.target.value)}
+                      className="bg-secondary border-border"
+                    />
+                  </div>
+                </div>
+
+                {/* Campos */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <Label>Campos do Embed</Label>
@@ -290,6 +329,7 @@ export default function EnviarMensagem() {
                         value={field.value}
                         onChange={(e) => updateField(index, { value: e.target.value })}
                         className="bg-secondary border-border"
+                        rows={2}
                       />
                       <div className="flex items-center gap-2">
                         <input
@@ -299,12 +339,38 @@ export default function EnviarMensagem() {
                           onChange={(e) => updateField(index, { inline: e.target.checked })}
                           className="rounded border-border"
                         />
-                        <Label htmlFor={`inline-${index}`} className="text-sm text-muted-foreground">
+                        <Label htmlFor={`inline-${index}`} className="text-sm text-muted-foreground cursor-pointer">
                           Exibir na mesma linha
                         </Label>
                       </div>
                     </div>
                   ))}
+                </div>
+
+                {/* Footer */}
+                <div className="space-y-2">
+                  <Label htmlFor="embedFooter">Rodapé</Label>
+                  <Input
+                    id="embedFooter"
+                    placeholder="Texto do rodapé"
+                    value={embedFooter}
+                    onChange={(e) => setEmbedFooter(e.target.value)}
+                    className="bg-secondary border-border"
+                  />
+                </div>
+
+                {/* Timestamp */}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="embedTimestamp"
+                    checked={embedTimestamp}
+                    onChange={(e) => setEmbedTimestamp(e.target.checked)}
+                    className="rounded border-border"
+                  />
+                  <Label htmlFor="embedTimestamp" className="text-sm text-muted-foreground cursor-pointer">
+                    Incluir timestamp (data/hora atual)
+                  </Label>
                 </div>
 
                 <Button
@@ -321,6 +387,7 @@ export default function EnviarMensagem() {
         </Card>
       </motion.div>
 
+      {/* Ajuda */}
       <motion.div variants={item}>
         <Card className="glass-card border-border bg-secondary/30">
           <CardHeader>
@@ -332,8 +399,9 @@ export default function EnviarMensagem() {
           <CardContent>
             <div className="space-y-2 text-sm text-muted-foreground">
               <p>📌 <strong>ID do Canal:</strong> Ative o modo desenvolvedor no Discord (Configurações → Avançado → Modo Desenvolvedor), clique com botão direito no canal e copie o ID.</p>
-              <p>🎨 <strong>Cores:</strong> Use hexadecimal (ex: #ff0000 para vermelho) ou nomes de cores em inglês (red, green, blue, yellow, orange, purple, pink, white, black).</p>
+              <p>🎨 <strong>Cores:</strong> Use hexadecimal (ex: #ff0000 para vermelho) ou o seletor de cores.</p>
               <p>📝 <strong>Embed:</strong> Os campos são opcionais. Adicione quantos campos quiser para organizar a informação.</p>
+              <p>🖼️ <strong>Imagens:</strong> Use URLs diretas de imagens (jpg, png, gif).</p>
               <p>🔑 <strong>Autenticação:</strong> O token JWT do usuário logado é enviado automaticamente em todas as requisições.</p>
             </div>
           </CardContent>

@@ -9,6 +9,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
 } from "recharts";
+import { fetchBotStatus } from "@/lib/api-service";
 
 const container = { hidden: {}, show: { transition: { staggerChildren: 0.1 } } };
 const item = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } };
@@ -33,6 +34,13 @@ interface Match {
   fila_channel_id: string | null;
 }
 
+interface ServerData {
+  totalUsers: number;
+  onlineUsers: number;
+  botStatus: "Online" | "Offline";
+  serverName: string;
+}
+
 function horasPassadas(dateStr: string): number {
   return (Date.now() - new Date(dateStr).getTime()) / 3_600_000;
 }
@@ -54,13 +62,39 @@ export default function Dashboard() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [closingId, setClosingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
-  const [serverData] = useState({
-    totalUsers: 1247,
-    onlineUsers: 342,
-    botStatus: "Online" as "Online" | "Offline",
-    serverName: "GGapostas",
+  const [serverData, setServerData] = useState<ServerData>({
+    totalUsers: 0,
+    onlineUsers: 0,
+    botStatus: "Offline",
+    serverName: "Carregando...",
   });
+
+  // Buscar status do bot da API 1
+  const loadBotStatus = useCallback(async () => {
+    try {
+      console.log("📡 Buscando status do bot na API 1...");
+      const result = await fetchBotStatus();
+      
+      if (result && result.success) {
+        setServerData({
+          totalUsers: result.data.total_usuarios,
+          onlineUsers: result.data.usuarios_online,
+          botStatus: result.data.bot_online ? "Online" : "Offline",
+          serverName: result.data.servidor,
+        });
+        console.log("✅ Dados do bot atualizados:", result.data);
+      } else {
+        console.error("❌ Erro ao buscar status do bot");
+        setServerData(prev => ({
+          ...prev,
+          botStatus: "Offline",
+        }));
+      }
+    } catch (error) {
+      console.error("❌ Erro ao carregar status do bot:", error);
+      toast.error("Erro ao buscar status do bot");
+    }
+  }, []);
 
   const loadMatches = useCallback(async () => {
     try {
@@ -88,15 +122,18 @@ export default function Dashboard() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [med] = await Promise.all([getMediadores(), loadMatches()]);
-      setMediadores(med);
+      await Promise.all([
+        getMediadores().then(setMediadores),
+        loadMatches(),
+        loadBotStatus(),
+      ]);
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
       toast.error("Erro ao carregar dados");
     } finally {
       setLoading(false);
     }
-  }, [loadMatches]);
+  }, [loadMatches, loadBotStatus]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -154,7 +191,7 @@ export default function Dashboard() {
     { label: "Total Usuários", value: serverData.totalUsers, icon: Users, color: "text-primary" },
     { label: "Usuários Online", value: serverData.onlineUsers, icon: Users, color: "text-chart-4" },
     { label: "Servidor", value: serverData.serverName, icon: Server, color: "text-accent", isText: true },
-    { label: "Bot Status", value: serverData.botStatus, icon: Bot, color: "text-success", isStatus: true },
+    { label: "Bot Status", value: serverData.botStatus, icon: Bot, color: serverData.botStatus === "Online" ? "text-success" : "text-destructive", isStatus: true },
   ];
 
   return (
@@ -176,7 +213,7 @@ export default function Dashboard() {
               <s.icon className={`h-5 w-5 sm:h-6 sm:w-6 ${s.color}`} />
               {s.isStatus && (
                 <span className="flex items-center gap-1 text-[10px] sm:text-xs text-success font-medium">
-                  <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-success animate-pulse-glow" />
+                  <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${serverData.botStatus === "Online" ? "bg-success animate-pulse-glow" : "bg-destructive"}`} />
                   {serverData.botStatus}
                 </span>
               )}
@@ -225,7 +262,7 @@ export default function Dashboard() {
                     </div>
                   </th>
                   <th className="text-left p-3 sm:p-4 text-muted-foreground font-medium text-xs">Ação</th>
-                 </tr>
+                </tr>
               </thead>
               <tbody>
                 <AnimatePresence>
